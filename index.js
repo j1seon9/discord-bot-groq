@@ -24,8 +24,6 @@ const GROQ_API_KEY  = process.env.GROQ_API_KEY;
 const SERVER_URL    = (process.env.SERVER_URL || "http://localhost:8000").replace(/\/$/, "");
 
 // ── 3. 학교 설정 저장소 ────────────────────────────────────
-// Cloudtype은 파일시스템이 휘발성이라 메모리에 저장
-// 영구 저장이 필요하면 Cloudtype 환경변수로 관리
 const schoolStore = {};
 
 function getSchool(guildId) {
