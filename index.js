@@ -8,87 +8,60 @@ const {
   SlashCommandBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
-  ButtonBuilder,
-  ButtonStyle,
+  // ButtonBuilder,
+  // ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
   InteractionType
 } = require("discord.js");
-const Groq     = require("groq-sdk");
-const fetch    = require("node-fetch");
-const fs       = require("fs");
-const mongoose = require("mongoose");
+const Groq  = require("groq-sdk");
+const fetch = require("node-fetch");
+const fs    = require("fs");
+// const mongoose = require("mongoose");
 require("dotenv").config();
 
 // ── 2. 설정값 로드 ─────────────────────────────────────────
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GROQ_API_KEY  = process.env.GROQ_API_KEY;
 const SERVER_URL    = (process.env.SERVER_URL || "http://localhost:8000").replace(/\/$/, "");
-const MONGODB_URI   = process.env.MONGODB_URI || "mongodb://localhost:27017/discord_bot";
+// const MONGODB_URI   = process.env.MONGODB_URI || "mongodb://localhost:27017/discord_bot";
 
-// ── 3. MongoDB 연결 및 스키마 ──────────────────────────────
-const schoolSchema = new mongoose.Schema({
-  guildId:    { type: String, required: true, unique: true },
-  schoolCode: { type: String, required: true },
-  officeCode: { type: String, required: true },
-  schoolName: { type: String, required: true },
-  officeName: { type: String, default: "" },
-  type:       { type: String, default: "" },
-  grade:      { type: String, required: true },
-  classNo:    { type: String, required: true },
-  updatedAt:  { type: Date,   default: Date.now }
-});
-
-const SchoolSetting = mongoose.model("SchoolSetting", schoolSchema);
-
-async function initDb() {
-  await mongoose.connect(MONGODB_URI);
-  console.log("✅ MongoDB 연결 완료");
-}
+// ── 3. MongoDB 연결 및 스키마 (비활성화) ───────────────────
+// const schoolSchema = new mongoose.Schema({
+//   guildId:    { type: String, required: true, unique: true },
+//   schoolCode: { type: String, required: true },
+//   officeCode: { type: String, required: true },
+//   schoolName: { type: String, required: true },
+//   officeName: { type: String, default: "" },
+//   type:       { type: String, default: "" },
+//   grade:      { type: String, required: true },
+//   classNo:    { type: String, required: true },
+//   updatedAt:  { type: Date,   default: Date.now }
+// });
+// const SchoolSetting = mongoose.model("SchoolSetting", schoolSchema);
+// async function initDb() {
+//   await mongoose.connect(MONGODB_URI);
+//   console.log("✅ MongoDB 연결 완료");
+// }
 
 // ── 4. 학교 설정 저장소 ────────────────────────────────────
-const schoolStore  = {};             // 메모리 캐시
-const consentStore = new Map();      // userId → true(동의) / false(비동의)
+const schoolStore = {}; // 메모리 저장
+// const consentStore = new Map();
 
-async function getSchool(guildId) {
-  if (schoolStore[guildId]) return schoolStore[guildId];
-
-  try {
-    const doc = await SchoolSetting.findOne({ guildId });
-    if (!doc) return null;
-    const data = {
-      schoolCode: doc.schoolCode,
-      officeCode: doc.officeCode,
-      schoolName: doc.schoolName,
-      officeName: doc.officeName,
-      type:       doc.type,
-      grade:      doc.grade,
-      classNo:    doc.classNo
-    };
-    schoolStore[guildId] = data;
-    return data;
-  } catch {
-    return schoolStore[guildId] || null;
-  }
+function getSchool(guildId) {
+  return schoolStore[guildId] || null;
 }
 
-async function setSchool(guildId, data, saveToDb = false) {
+function setSchool(guildId, data) {
   schoolStore[guildId] = data;
-  if (!saveToDb) return;
-
-  try {
-    await SchoolSetting.findOneAndUpdate(
-      { guildId },
-      { ...data, guildId, updatedAt: new Date() },
-      { upsert: true, new: true }
-    );
-  } catch (e) {
-    console.error("DB 저장 오류:", e.message);
-  }
 }
 
-// ── 5. Groq 클라이언트 ────────────────────────────────────
+// ── 5. 개인정보 동의 관련 (비활성화) ──────────────────────
+// function buildConsentComponents(schoolName) { ... }
+// const PRIVACY_NOTICE = `...`;
+
+// ── 6. Groq 클라이언트 ────────────────────────────────────
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 const SYSTEM_PROMPT = `당신은 Discord 서버의 친절한 AI 어시스턴트입니다.
@@ -98,14 +71,14 @@ const SYSTEM_PROMPT = `당신은 Discord 서버의 친절한 AI 어시스턴트�
 const conversationHistory = new Map();
 const MAX_HISTORY = 10;
 
-// ── 6. KST 날짜 포맷 ──────────────────────────────────────
+// ── 7. KST 날짜 포맷 ──────────────────────────────────────
 function kstTodayFormatted() {
   const d = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const [y, m, day] = d.split("-");
   return `${y}년 ${m}월 ${day}일`;
 }
 
-// ── 7. Groq AI 호출 ───────────────────────────────────────
+// ── 8. Groq AI 호출 ───────────────────────────────────────
 async function askGroq(channelId, userMessage) {
   if (!conversationHistory.has(channelId)) {
     conversationHistory.set(channelId, []);
@@ -134,7 +107,7 @@ async function askGroq(channelId, userMessage) {
   }
 }
 
-// ── 8. 학교 검색 ──────────────────────────────────────────
+// ── 9. 학교 검색 ──────────────────────────────────────────
 async function searchSchool(name) {
   try {
     const res = await fetch(
@@ -157,7 +130,7 @@ async function searchSchool(name) {
   }
 }
 
-// ── 9. 급식 조회 ──────────────────────────────────────────
+// ── 10. 급식 조회 ─────────────────────────────────────────
 async function fetchMeal(schoolCode, officeCode) {
   try {
     const res = await fetch(
@@ -179,7 +152,7 @@ async function fetchMeal(schoolCode, officeCode) {
   }
 }
 
-// ── 10. 시간표 조회 ───────────────────────────────────────
+// ── 11. 시간표 조회 ───────────────────────────────────────
 async function fetchTimetable(schoolCode, officeCode, grade, classNo) {
   try {
     const res = await fetch(
@@ -194,42 +167,13 @@ async function fetchTimetable(schoolCode, officeCode, grade, classNo) {
   }
 }
 
-// ── 11. 긴 메시지 분할 전송 ───────────────────────────────
+// ── 12. 긴 메시지 분할 전송 ───────────────────────────────
 async function sendLong(interaction, content) {
   const chunks = content.match(/.{1,1990}/gs) || [];
   for (const chunk of chunks) {
     await interaction.followUp(chunk);
   }
 }
-
-// ── 12. 개인정보 동의 버튼 생성 ───────────────────────────
-function buildConsentComponents(schoolName) {
-  const encoded = encodeURIComponent(schoolName);
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`consent_agree|${encoded}`)
-        .setLabel("동의하고 계속하기")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`consent_disagree|${encoded}`)
-        .setLabel("동의하지 않음 (재시작 시 초기화)")
-        .setStyle(ButtonStyle.Secondary)
-    )
-  ];
-}
-
-const PRIVACY_NOTICE = `\`\`\`
-📋 개인정보 수집 및 이용 안내
-
-수집 항목 : 서버 ID, 학교명, 학교코드, 교육청코드, 학년, 반
-수집 목적 : 봇 재시작 후에도 학교 설정 유지
-보관 기간 : 서버에서 학교 설정을 변경하거나 삭제할 때까지
-보관 장소 : 봇 운영 MongoDB 데이터베이스
-
-※ 동의하지 않으면 학교 설정은 봇 메모리에만 저장되며
-   봇 재시작 시 초기화됩니다.
-\`\`\``;
 
 // ── 13. 클라이언트 생성 ───────────────────────────────────
 const client = new Client({
@@ -275,11 +219,12 @@ const commands = [
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Ready! Logged in as ${readyClient.user.tag}`);
 
-  try {
-    await initDb();
-  } catch (e) {
-    console.error("⚠️ MongoDB 연결 실패:", e.message);
-  }
+  // DB 초기화 비활성화
+  // try {
+  //   await initDb();
+  // } catch (e) {
+  //   console.error("⚠️ MongoDB 연결 실패:", e.message);
+  // }
 
   const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
   try {
@@ -295,7 +240,9 @@ client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
 
   if (message.content.includes("ping")) {
-    message.reply("pong");
+    const sent = await message.reply("pong");
+    const elapsed = sent.createdTimestamp - message.createdTimestamp;
+    await sent.edit(`pong (${elapsed}ms)`);
     return;
   }
 
@@ -326,19 +273,43 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
     const { commandName } = interaction;
 
-    // /학교설정 → 개인정보 동의 먼저 표시
+    // /학교설정
     if (commandName === "학교설정") {
+      await interaction.deferReply({ ephemeral: true });
       const 학교명 = interaction.options.getString("학교명");
-      await interaction.reply({
-        content: `🔍 **학교 설정 전 개인정보 수집 및 이용 동의**\n${PRIVACY_NOTICE}\n**검색할 학교:** ${학교명}`,
-        components: buildConsentComponents(학교명),
-        ephemeral: true
+      const results = await searchSchool(학교명);
+
+      if (!results.length) {
+        await interaction.editReply("❌ 검색 결과가 없습니다. 학교명을 다시 확인해주세요.");
+        return;
+      }
+
+      const options = results.slice(0, 25).map(r => {
+        const officeText = r.officeName ? `, ${r.officeName}` : "";
+        const label = `${r.name} (${r.type}${officeText})`;
+        return {
+          label:       label.slice(0, 100),
+          description: r.officeName || r.type || "",
+          value:       `${r.schoolCode}|${r.officeCode}|${r.name}|${r.officeName}|${r.type}`
+        };
+      });
+
+      const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("school_select")
+          .setPlaceholder("학교를 선택하세요")
+          .addOptions(options)
+      );
+
+      await interaction.editReply({
+        content: `🔍 **'${학교명}'** 검색 결과 ${results.length}개\n아래에서 학교를 선택하세요:`,
+        components: [row]
       });
     }
 
     // /학교확인
     else if (commandName === "학교확인") {
-      const cfg = await getSchool(interaction.guildId);
+      const cfg = getSchool(interaction.guildId);
       if (!cfg) {
         await interaction.reply({
           content: "⚠️ 설정된 학교가 없습니다. `/학교설정`으로 먼저 설정해주세요.",
@@ -366,7 +337,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // /급식
     else if (commandName === "급식") {
       await interaction.deferReply();
-      const cfg = await getSchool(interaction.guildId);
+      const cfg = getSchool(interaction.guildId);
       if (!cfg) {
         await interaction.editReply("⚠️ `/학교설정`으로 먼저 학교를 설정해주세요.");
         return;
@@ -380,7 +351,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // /시간표
     else if (commandName === "시간표") {
       await interaction.deferReply();
-      const cfg = await getSchool(interaction.guildId);
+      const cfg = getSchool(interaction.guildId);
       if (!cfg) {
         await interaction.editReply("⚠️ `/학교설정`으로 먼저 학교를 설정해주세요.");
         return;
@@ -422,53 +393,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // ── 개인정보 동의 버튼 ──────────────────────────────────
-  else if (interaction.isButton()) {
-    const [action, encodedName] = interaction.customId.split("|");
-    const schoolName = decodeURIComponent(encodedName || "");
-
-    if (action === "consent_agree" || action === "consent_disagree") {
-      const agreed = action === "consent_agree";
-      consentStore.set(interaction.user.id, agreed);
-
-      await interaction.deferUpdate();
-
-      const results = await searchSchool(schoolName);
-      if (!results.length) {
-        await interaction.editReply({
-          content: "❌ 검색 결과가 없습니다. 학교명을 다시 확인해주세요.",
-          components: []
-        });
-        return;
-      }
-
-      const options = results.slice(0, 25).map(r => {
-        const officeText = r.officeName ? `, ${r.officeName}` : "";
-        const label = `${r.name} (${r.type}${officeText})`;
-        return {
-          label:       label.slice(0, 100),
-          description: r.officeName || r.type || "",
-          value:       `${r.schoolCode}|${r.officeCode}|${r.name}|${r.officeName}|${r.type}`
-        };
-      });
-
-      const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("school_select")
-          .setPlaceholder("학교를 선택하세요")
-          .addOptions(options)
-      );
-
-      const consentMsg = agreed
-        ? "✅ 동의하셨습니다. 학교 설정이 DB에 저장됩니다."
-        : "⚠️ 미동의 상태입니다. 봇 재시작 시 설정이 초기화됩니다.";
-
-      await interaction.editReply({
-        content: `${consentMsg}\n\n🔍 **'${schoolName}'** 검색 결과 ${results.length}개\n아래에서 학교를 선택하세요:`,
-        components: [row]
-      });
-    }
-  }
+  // ── 개인정보 동의 버튼 (비활성화) ────────────────────────
+  // else if (interaction.isButton()) { ... }
 
   // ── Select Menu (학교 선택) ──────────────────────────────
   else if (interaction.isStringSelectMenu() && interaction.customId === "school_select") {
@@ -513,9 +439,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       interaction.customId.split("|");
     const grade   = interaction.fields.getTextInputValue("grade").trim();
     const classNo = interaction.fields.getTextInputValue("class_no").trim();
-    const agreed  = consentStore.get(interaction.user.id) === true;
 
-    await setSchool(interaction.guildId, {
+    setSchool(interaction.guildId, {
       schoolCode,
       officeCode,
       schoolName,
@@ -523,17 +448,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       type:       type       || "학교",
       grade,
       classNo
-    }, agreed);
+    });
 
-    const officeText  = officeName ? `, ${officeName}` : "";
-    const saveMessage = agreed
-      ? "💾 설정이 DB에 저장되었습니다. (봇 재시작 후에도 유지)"
-      : "⚡ 설정이 메모리에만 저장되었습니다. (봇 재시작 시 초기화)";
-
+    const officeText = officeName ? `, ${officeName}` : "";
     await interaction.reply({
       content:
         `✅ **${schoolName} (${type}${officeText})**\n` +
-        `${grade}학년 ${classNo}반으로 설정되었습니다!\n\n${saveMessage}`,
+        `${grade}학년 ${classNo}반으로 설정되었습니다!\n\n` +
+        `⚡ 메모리에 저장되었습니다. (봇 재시작 시 초기화)`,
       ephemeral: true
     });
   }
