@@ -207,10 +207,11 @@ client.once(Events.ClientReady, async (readyClient) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
 
-  if (message.content === "ping") {
-    message.reply("pong");
-    return;
-  }
+    if (message.content === "ping") 
+      if (message.content.includes("ping")){
+      message.reply("pong");
+      return;
+    }
 
   if (client.user && message.mentions.has(client.user)) {
     const content = message.content.replace(`<@${client.user.id}>`, "").trim();
